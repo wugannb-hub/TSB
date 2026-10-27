@@ -1,0 +1,83 @@
+--=============================================================================
+-- SKIDWARE · main（装配层：只做加载、注入、生命周期）
+--=============================================================================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+
+local BASE = "https://raw.githubusercontent.com/wugannb-hub/tsb/main/"
+local CACHE = {}
+local function req(name)
+    if CACHE[name] then return CACHE[name] end
+    local src = game:HttpGet(BASE .. name .. ".lua?t=" .. os.time())
+    local chunk = assert(loadstring(src, "=" .. name))
+    CACHE[name] = chunk()
+    return CACHE[name]
+end
+
+local scriptId = math.random(1000000)
+if _G.SkidwareDestroy then pcall(_G.SkidwareDestroy) end
+_G.SkidwareId = scriptId
+local function isCurrent() return _G.SkidwareId == scriptId end
+
+local Bus, State, Util, Combat, Theme, W, HeadTimer, Window
+local ok, err = pcall(function()
+    Bus       = req("bus")
+    Util      = req("util")
+    State     = req("state")
+    Combat    = req("combat")
+    Theme     = req("theme")
+    W         = req("widgets")
+    HeadTimer = req("headtimer")
+    Window    = req("window")
+end)
+if not ok then
+    warn("[skidware] module load failed: " .. tostring(err))
+    return
+end
+
+local ctx = {
+    bus       = Bus,
+    state     = State,
+    util      = Util,
+    theme     = Theme,
+    widgets   = W,
+    headtimer = HeadTimer,
+    combat    = Combat,
+    player    = Players.LocalPlayer,
+    isAlive   = isCurrent,
+}
+
+State.init(ctx)
+W.init(ctx)
+Combat.init(ctx)
+HeadTimer.init(ctx)
+Window.init(ctx)
+
+local renderConn = RunService.RenderStepped:Connect(function(dt)
+    if not isCurrent() then return end
+    HeadTimer.update(dt)
+    Window.update(dt)
+end)
+
+local function shutdown()
+    _G.SkidwareId = nil
+    if renderConn then renderConn:Disconnect() end
+    pcall(Window.destroy)
+    pcall(HeadTimer.destroy)
+    pcall(Combat.destroy)
+    pcall(State.flush)
+    _G.SkidwareDestroy = nil
+end
+_G.SkidwareDestroy = shutdown
+Bus.on("shutdown", shutdown)
+
+task.spawn(function()
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = "skidware",
+            Text = "loaded · 网格图标进入布局编辑",
+            Duration = 4,
+        })
+    end)
+end)
